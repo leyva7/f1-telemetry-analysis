@@ -24,7 +24,7 @@ wheels/
 *.egg
 
 # FastF1 Cache
-cache/
+data/cache/
 
 # IDE
 .vscode/
@@ -38,6 +38,7 @@ cache/
 Thumbs.db
 
 # Plots and outputs
+outputs/
 *.png
 *.jpg
 *.pdf

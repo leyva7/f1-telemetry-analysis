@@ -13,8 +13,15 @@ import numpy as np
 from pathlib import Path
 
 # Enable caching using pathlib
-CACHE_DIR = Path("cache")
-CACHE_DIR.mkdir(exist_ok=True)  # Create directory if it doesn't exist
+# Get the project root directory (parent of src/)
+PROJECT_ROOT = Path(__file__).parent.parent
+CACHE_DIR = PROJECT_ROOT / "data" / "cache"
+OUTPUT_DIR = PROJECT_ROOT / "outputs"
+
+# Create directories if they don't exist
+CACHE_DIR.mkdir(parents=True, exist_ok=True)
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
 fastf1.Cache.enable_cache(CACHE_DIR)
 
 
@@ -132,10 +139,10 @@ def analyze_session(year, grand_prix, session_type='Q'):
     ax2.plot(common_distance, time_delta_accumulated * 1000, linewidth=2.5, color='darkblue')
     ax2.axhline(y=0, color='black', linestyle='--', linewidth=1)
     ax2.fill_between(common_distance, 0, time_delta_accumulated * 1000, 
-                     where=(time_delta_accumulated > 0), alpha=0.3, color='green', 
+                     where=(time_delta_accumulated > 0), alpha=0.3, color='blue', 
                      label=f'{driver_1} gaining time')
     ax2.fill_between(common_distance, 0, time_delta_accumulated * 1000, 
-                     where=(time_delta_accumulated < 0), alpha=0.3, color='orange', 
+                     where=(time_delta_accumulated < 0), alpha=0.3, color='red', 
                      label=f'{driver_2} gaining time')
     ax2.set_ylabel('Time Delta [ms]', fontweight='bold')
     ax2.set_title(f'Cumulative Time Delta (Positive = {driver_1} ahead)', fontweight='bold')
@@ -147,9 +154,9 @@ def analyze_session(year, grand_prix, session_type='Q'):
     ax3.plot(common_distance, speed_diff, linewidth=2, color='purple', alpha=0.7)
     ax3.axhline(y=0, color='black', linestyle='--', linewidth=1)
     ax3.fill_between(common_distance, 0, speed_diff, where=(speed_diff > 0), 
-                     alpha=0.3, color='green', label=f'{driver_1} advantage')
+                     alpha=0.3, color='blue', label=f'{driver_1} advantage')
     ax3.fill_between(common_distance, 0, speed_diff, where=(speed_diff < 0), 
-                     alpha=0.3, color='orange', label=f'{driver_2} advantage')
+                     alpha=0.3, color='red', label=f'{driver_2} advantage')
     ax3.set_ylabel('Speed Difference [km/h]', fontweight='bold')
     ax3.set_title(f'Speed Difference (Positive = {driver_1} faster)', fontweight='bold')
     ax3.legend()
@@ -175,13 +182,20 @@ def analyze_session(year, grand_prix, session_type='Q'):
     ax5.grid(True, alpha=0.3)
 
     plt.tight_layout()
+    
+    # Save the analysis figure
+    filename_analysis = OUTPUT_DIR / f"analysis_{driver_1}_vs_{driver_2}_{session_name.replace(' ', '_')}_{session.event.year}_{session_type}.png"
+    plt.savefig(filename_analysis, dpi=300, bbox_inches='tight')
+    print(f"Analysis plot saved as: {filename_analysis}")
+    
     plt.show()
 
     # Plot circuit maps
     print("\nGenerating circuit maps...")
     plot_circuit_map(pos_1, pos_2, tel_1['Speed'], tel_2['Speed'], 
                      driver_1, driver_2, session.event, session_type,
-                     time_delta_accumulated, common_distance, tel_1['Distance'], tel_2['Distance'])
+                     time_delta_accumulated, common_distance, tel_1['Distance'], tel_2['Distance'],
+                     output_dir=OUTPUT_DIR)
 
     # Print key insights with contextual information
     print("=" * 70)
@@ -300,8 +314,12 @@ def analyze_session(year, grand_prix, session_type='Q'):
 def plot_circuit_map(pos_data_1, pos_data_2, tel_speed_1, tel_speed_2, 
                      driver_1, driver_2, session_info, session_type='Q',
                      time_delta_accumulated=None, common_distance=None,
-                     tel_distance_1=None, tel_distance_2=None):
+                     tel_distance_1=None, tel_distance_2=None, output_dir=None):
     """Plot circuit map with speed coloring for both drivers and time delta overlay"""
+    
+    # Use provided output_dir or get from project root
+    if output_dir is None:
+        output_dir = Path(__file__).parent.parent / "outputs"
     
     # Get coordinates
     x1 = pos_data_1['X'].values
@@ -367,6 +385,12 @@ def plot_circuit_map(pos_data_1, pos_data_2, tel_speed_1, tel_speed_2,
     cbar2.set_label('Speed [km/h]', fontsize=10, fontweight='bold')
     
     plt.tight_layout()
+    
+    # Save the speed maps figure
+    filename_speed_maps = output_dir / f"speed_maps_{driver_1}_vs_{driver_2}_{session_info['EventName'].replace(' ', '_')}_{session_info.year}_{session_type}.png"
+    plt.savefig(filename_speed_maps, dpi=300, bbox_inches='tight')
+    print(f"Speed maps plot saved as: {filename_speed_maps}")
+    
     plt.show()
     
     # Also create a combined overlay map colored by time delta
@@ -414,7 +438,7 @@ def plot_circuit_map(pos_data_1, pos_data_2, tel_speed_1, tel_speed_2,
         points2 = np.array([x2, y2]).T.reshape(-1, 1, 2)
         segments2 = np.concatenate([points2[:-1], points2[1:]], axis=1)
         
-        # Create colormap: green (positive = driver_1 ahead), red (negative = driver_2 ahead)
+        # Create colormap: blue (positive = driver_1 ahead), red (negative = driver_2 ahead)
         # Normalize time delta (positive = driver_1 ahead, negative = driver_2 ahead)
         # Use symmetric normalization around zero
         max_abs_td = max(abs(time_delta_accumulated.max()), abs(time_delta_accumulated.min()))
@@ -422,9 +446,12 @@ def plot_circuit_map(pos_data_1, pos_data_2, tel_speed_1, tel_speed_2,
         vmax_td = max_abs_td
         norm_td = plt.Normalize(vmin_td, vmax_td)
         
-        # Use a diverging colormap: green for positive (driver_1 ahead), red for negative (driver_2 ahead)
-        # RdYlGn_r gives us green (positive) to red (negative)
-        colormap_td = mpl.cm.RdYlGn_r
+        # Use a diverging colormap: blue for positive (driver_1 ahead), red for negative (driver_2 ahead)
+        # Create custom colormap: blue (positive) to red (negative)
+        from matplotlib.colors import LinearSegmentedColormap
+        colors = ['blue', 'white', 'red']
+        n_bins = 100
+        colormap_td = LinearSegmentedColormap.from_list('blue_red', colors, N=n_bins)
         
         # Plot driver 1 track colored by time delta
         lc1_td = LineCollection(segments1, cmap=colormap_td, norm=norm_td, 
@@ -444,7 +471,7 @@ def plot_circuit_map(pos_data_1, pos_data_2, tel_speed_1, tel_speed_2,
         # Add colorbar
         cbar3 = plt.colorbar(mpl.cm.ScalarMappable(norm=norm_td, cmap=colormap_td), ax=ax3, 
                             orientation='horizontal', pad=0.05, aspect=30)
-        cbar3.set_label(f'Time Delta (Green = {driver_1} ahead, Red = {driver_2} ahead)', 
+        cbar3.set_label(f'Time Delta (Blue = {driver_1} ahead, Red = {driver_2} ahead)', 
                        fontsize=10, fontweight='bold')
         # Format colorbar to show milliseconds
         ticks = cbar3.get_ticks()
@@ -453,11 +480,15 @@ def plot_circuit_map(pos_data_1, pos_data_2, tel_speed_1, tel_speed_2,
         
         ax3.set_aspect('equal')
         ax3.axis('off')
-        ax3.legend([f'{driver_1} (solid)', f'{driver_2} (dashed)'], 
-                  loc='upper right', fontsize=12, framealpha=0.9)
         ax3.set_title('Track Overlay - Colored by Time Delta', fontsize=14, fontweight='bold')
         
         plt.tight_layout()
+        
+        # Save the overlay figure
+        filename_overlay = output_dir / f"overlay_{driver_1}_vs_{driver_2}_{session_info['EventName'].replace(' ', '_')}_{session_info.year}_{session_type}.png"
+        plt.savefig(filename_overlay, dpi=300, bbox_inches='tight')
+        print(f"Overlay plot saved as: {filename_overlay}")
+        
         plt.show()
     else:
         # Fallback to simple overlay if time delta data not available
@@ -475,10 +506,15 @@ def plot_circuit_map(pos_data_1, pos_data_2, tel_speed_1, tel_speed_2,
         
         ax3.set_aspect('equal')
         ax3.axis('off')
-        ax3.legend(loc='upper right', fontsize=12, framealpha=0.9)
         ax3.set_title('Track Overlay Comparison', fontsize=14, fontweight='bold')
         
         plt.tight_layout()
+        
+        # Save the fallback overlay figure
+        filename_overlay_fallback = output_dir / f"overlay_fallback_{driver_1}_vs_{driver_2}_{session_info['EventName'].replace(' ', '_')}_{session_info.year}_{session_type}.png"
+        plt.savefig(filename_overlay_fallback, dpi=300, bbox_inches='tight')
+        print(f"Fallback overlay plot saved as: {filename_overlay_fallback}")
+        
         plt.show()
 
 # Main execution - call the function with default parameters
